@@ -1,7 +1,7 @@
 use tetra::graphics::mesh::{Mesh, ShapeStyle};
 use tetra::graphics::text::{Font, Text};
-use tetra::graphics::{self, Color, DrawParams, Rectangle};
-use tetra::input::{self, Key, MouseButton};
+use tetra::graphics::{self, Color, DrawParams, Rectangle, Texture};
+use tetra::input::{self, Key};
 use tetra::Event;
 use tetra::math::{Vec2, Vec3, Mat4};
 use tetra::{Context, ContextBuilder, State};
@@ -11,116 +11,6 @@ const SCREEN_WIDTH: i32 = 800;
 const SCREEN_HEIGHT: i32 = 600;
 
 // --- Game Structs ---
-#[derive(Clone)]
-struct Icon {
-    rect: Rectangle,
-    label: String,
-    action: IconAction,
-    color: Color,
-}
-
-#[derive(Clone, Copy)]
-enum IconAction {
-    OpenMail,
-    StartGame,
-    OpenTerminal,
-    OpenChat,
-}
-
-#[derive(PartialEq, Clone, Copy)]
-enum WindowKind {
-    Info,
-    Terminal,
-    Chat,
-}
-
-struct Window {
-    rect: Rectangle,
-    title: String,
-    content: String,
-    visible: bool,
-    kind: WindowKind,
-}
-
-struct Bullet {
-    pos: Vec2<f32>,
-    vel: Vec2<f32>,
-}
-
-struct Enemy {
-    pos: Vec2<f32>,
-    size: f32,
-}
-
-struct ChatMessage {
-    sender: String,
-    content: String,
-    color: Color,
-}
-
-#[derive(PartialEq)]
-enum NpcState {
-    Intro,
-    WaitingForHash,
-    Success,
-}
-
-struct ChatSystem {
-    messages: Vec<ChatMessage>,
-    input_buffer: String,
-    npc_state: NpcState,
-    response_timer: f32,
-}
-
-impl ChatSystem {
-    fn new() -> Self {
-        ChatSystem {
-            messages: vec![
-                ChatMessage { 
-                    sender: "System".to_string(), 
-                    content: "Connecting to #vibecoded-dev...".to_string(), 
-                    color: Color::rgb(0.5, 0.5, 0.5) 
-                },
-                ChatMessage { 
-                    sender: "System".to_string(), 
-                    content: "Connected.".to_string(), 
-                    color: Color::rgb(0.5, 0.5, 0.5) 
-                },
-            ],
-            input_buffer: String::new(),
-            npc_state: NpcState::Intro,
-            response_timer: 2.0, // Initial delay for NPC to speak
-        }
-    }
-}
-
-struct MiniGame {
-    active: bool,
-    player_pos: Vec2<f32>,
-    bullets: Vec<Bullet>,
-    enemies: Vec<Enemy>,
-    score: u32,
-    timer: f32,
-    spawn_timer: f32,
-    game_over: bool,
-    level: u32,
-}
-
-impl MiniGame {
-    fn new() -> Self {
-        MiniGame {
-            active: false,
-            player_pos: Vec2::new(SCREEN_WIDTH as f32 / 2.0, SCREEN_HEIGHT as f32 / 2.0),
-            bullets: Vec::new(),
-            enemies: Vec::new(),
-            score: 0,
-            timer: 0.0,
-            spawn_timer: 0.0,
-            game_over: false,
-            level: 1,
-        }
-    }
-}
 
 enum Scene {
     Boot,
@@ -130,12 +20,20 @@ enum Scene {
     TransitionToDesktop,
     Desktop,
     Config,
+    KernelPanic,
 }
 
 #[derive(PartialEq, Clone, Copy)]
 enum Language {
     English,
     Turkish,
+}
+
+#[derive(PartialEq, Clone, Copy)]
+enum Direction {
+    Front,
+    Left,
+    Right,
 }
 
 struct GameState {
@@ -172,22 +70,29 @@ struct GameState {
     boot_grace_timer: f32,
 
     // GUI Elements
-    window_mesh: Mesh,
-    title_bar_mesh: Mesh,
-    cursor_mesh: Mesh,
     config_box_mesh: Mesh,
     config_shadow_mesh: Mesh,
     
-    // Desktop State
-    icons: Vec<Icon>,
-    windows: Vec<Window>,
-    mini_game: MiniGame,
-    mail_read: bool,
-    
-    // New Systems
-    chat_system: ChatSystem,
-    terminal_input: String,
-    terminal_history: Vec<String>,
+    // Roguelike Game Assets & State
+    player_pos: Vec2<f32>,
+    player_texture_front: Texture,
+    player_texture_left: Texture,
+    player_texture_right: Texture,
+    player_direction: Direction,
+    bg_texture: Texture,
+    current_stage: u8,
+    player_health: f32,
+    panic_report: Vec<String>,
+}
+
+fn wrap_text(text: &str, max_chars: usize) -> Vec<String> {
+    let chars: Vec<char> = text.chars().collect();
+    if chars.is_empty() {
+        return vec!["".to_string()];
+    }
+    chars.chunks(max_chars)
+        .map(|chunk| chunk.iter().collect::<String>())
+        .collect()
 }
 
 impl GameState {
@@ -217,28 +122,6 @@ impl GameState {
         };
 
         // Initialize Meshes
-        let window_mesh = Mesh::rectangle(
-            ctx,
-            ShapeStyle::Fill,
-            Rectangle::new(0.0, 0.0, 400.0, 300.0),
-        )?;
-        
-        let title_bar_mesh = Mesh::rectangle(
-            ctx,
-            ShapeStyle::Fill,
-            Rectangle::new(0.0, 0.0, 400.0, 30.0),
-        )?;
-
-        let cursor_mesh = Mesh::polygon(
-            ctx,
-            ShapeStyle::Fill,
-            &[
-                Vec2::new(0.0, 0.0),
-                Vec2::new(0.0, 20.0),
-                Vec2::new(15.0, 15.0),
-            ],
-        )?;
-
         let config_box_mesh = Mesh::rectangle(
             ctx,
             ShapeStyle::Fill,
@@ -251,33 +134,11 @@ impl GameState {
             Rectangle::new(0.0, 0.0, 600.0, 400.0),
         )?;
 
-        // Setup Desktop Icons
-        let icons = vec![
-            Icon {
-                rect: Rectangle::new(20.0, 20.0, 64.0, 64.0),
-                label: "Mail".to_string(),
-                action: IconAction::OpenMail,
-                color: Color::rgb(0.9, 0.9, 0.0), // Yellow
-            },
-            Icon {
-                rect: Rectangle::new(20.0, 120.0, 64.0, 64.0),
-                label: "System_Def".to_string(),
-                action: IconAction::StartGame,
-                color: Color::rgb(0.8, 0.2, 0.2), // Red
-            },
-            Icon {
-                rect: Rectangle::new(20.0, 220.0, 64.0, 64.0),
-                label: "Terminal".to_string(),
-                action: IconAction::OpenTerminal,
-                color: Color::rgb(0.2, 0.2, 0.2), // Black
-            },
-            Icon {
-                rect: Rectangle::new(20.0, 320.0, 64.0, 64.0),
-                label: "Chat".to_string(),
-                action: IconAction::OpenChat,
-                color: Color::rgb(0.0, 0.5, 0.0), // Green
-            },
-        ];
+        // Load Roguelike Assets
+        let player_texture_front = Texture::new(ctx, "./assets/chara1.png")?;
+        let player_texture_left = Texture::new(ctx, "./assets/chara_left.png")?;
+        let player_texture_right = Texture::new(ctx, "./assets/chara_right.png")?;
+        let bg_texture = Texture::new(ctx, "./assets/city_bg.png")?;
 
         let boot_lines = vec![
                 "Starting VibeCoded Linux version 6.9.420...".to_string(),
@@ -340,20 +201,71 @@ impl GameState {
             cursor_visible: true,
             boot_grace_timer: 0.0,
             
-            window_mesh,
-            title_bar_mesh,
-            cursor_mesh,
             config_box_mesh,
             config_shadow_mesh,
             
-            icons,
-            windows: Vec::new(),
-            mini_game: MiniGame::new(),
-            mail_read: false,
-            chat_system: ChatSystem::new(),
-            terminal_input: String::new(),
-            terminal_history: Vec::new(),
+            player_pos: Vec2::new(400.0, 300.0),
+            player_texture_front,
+            player_texture_left,
+            player_texture_right,
+            player_direction: Direction::Front,
+            bg_texture,
+            current_stage: 1,
+            player_health: 100.0,
+            panic_report: Vec::new(),
         })
+    }
+
+    fn generate_kernel_panic(&mut self) {
+        let mut rng = rand::thread_rng();
+        let reasons = [
+            "Vibe check failed!",
+            "Null pointer dereference in vibe_core.ko",
+            "Stack overflow in chill_beats_module",
+            "Out of memory: Kill process 'stress' (score 420)",
+            "CPU 0: Machine Check Exception: Vibe Overload",
+            "Fatal exception in interrupt handler: Bad Vibe",
+            "Attempted to kill init! (exit code 0xdeadbeef)",
+        ];
+        let reason = reasons[rng.gen_range(0..reasons.len())];
+        
+        let mut lines = Vec::new();
+        let max_chars = 75;
+
+        let raw_lines = vec![
+            format!("[    {:2}.{:06}] Kernel panic - not syncing: {}", rng.gen_range(10..99), rng.gen_range(0..999999), reason),
+            format!("[    {:2}.{:06}] CPU: 0 PID: 420 Comm: vibecoded_game Tainted: G        W  O      6.9.420-vibecoded #1", rng.gen_range(10..99), rng.gen_range(0..999999)),
+            format!("[    {:2}.{:06}] Hardware name: VibeCoded Virtual Machine/Standard PC (Q35 + ICH9, 2009), BIOS 1.0 12/31/2025", rng.gen_range(10..99), rng.gen_range(0..999999)),
+            format!("[    {:2}.{:06}] Call Trace:", rng.gen_range(10..99), rng.gen_range(0..999999)),
+            format!("[    {:2}.{:06}]  <TASK>", rng.gen_range(10..99), rng.gen_range(0..999999)),
+        ];
+
+        for raw in raw_lines {
+            lines.extend(wrap_text(&raw, max_chars));
+        }
+        
+        let symbols = ["dump_stack", "panic", "do_exit", "__handle_mm_fault", "do_group_exit", "get_signal", "arch_do_signal_or_restart", "exit_to_user_mode_prepare", "syscall_exit_to_user_mode", "do_syscall_64", "entry_SYSCALL_64_after_hwframe"];
+        
+        for sym in symbols {
+            let offset = rng.gen_range(0x10..0xff);
+            let size = rng.gen_range(0x100..0x500);
+            let line = format!("[    {:2}.{:06}]  {}+0x{:x}/0x{:x}", rng.gen_range(10..99), rng.gen_range(0..999999), sym, offset, size);
+            lines.extend(wrap_text(&line, max_chars));
+        }
+        
+        let rip_line = format!("[    {:2}.{:06}] RIP: 0033:0x{:x}", rng.gen_range(10..99), rng.gen_range(0..999999), rng.r#gen::<u64>());
+        lines.extend(wrap_text(&rip_line, max_chars));
+
+        let task_end = format!("[    {:2}.{:06}]  </TASK>", rng.gen_range(10..99), rng.gen_range(0..999999));
+        lines.extend(wrap_text(&task_end, max_chars));
+
+        let end_panic = format!("[    {:2}.{:06}] ---[ end Kernel panic - not syncing: {} ]---", rng.gen_range(10..99), rng.gen_range(0..999999), reason);
+        lines.extend(wrap_text(&end_panic, max_chars));
+
+        lines.push("".to_string());
+        lines.push("Press ENTER to reboot system...".to_string());
+        
+        self.panic_report = lines;
     }
 
     fn reset(&mut self) {
@@ -368,6 +280,12 @@ impl GameState {
         self.shell_history.clear();
         self.shell_input_buffer.clear();
         self.session_started = false;
+        
+        // Reset Game State
+        self.player_health = 100.0;
+        self.current_stage = 1;
+        self.player_pos = Vec2::new(400.0, 300.0);
+        self.player_direction = Direction::Front;
     }
 
     fn logout(&mut self) {
@@ -376,91 +294,21 @@ impl GameState {
         self.login_error = None;
         self.shell_history.clear();
         self.shell_input_buffer.clear();
-        self.windows.clear();
-        self.mini_game = MiniGame::new();
         self.session_started = false;
     }
 
-    fn open_window(&mut self, title: &str, content: &str, kind: WindowKind) {
-        self.windows.push(Window {
-            rect: Rectangle::new(200.0, 150.0, 400.0, 300.0),
-            title: title.to_string(),
-            content: content.to_string(),
-            visible: true,
-            kind,
-        });
+    fn add_shell_message(&mut self, text: String, color: Color) {
+        let max_chars = 75; 
+        let lines = wrap_text(&text, max_chars);
+        for line in lines {
+            self.shell_history.push((line, color));
+        }
     }
 }
 
 impl State for GameState {
     fn event(&mut self, ctx: &mut Context, event: Event) -> tetra::Result {
         match event {
-            Event::MouseButtonPressed { button: MouseButton::Left } => {
-                if let Scene::Desktop = self.scene {
-                    let mouse_pos = input::get_mouse_position(ctx);
-                    
-                    if self.mini_game.active {
-                        // Shooting in game
-                        let dir = (mouse_pos - self.mini_game.player_pos).normalized();
-                        self.mini_game.bullets.push(Bullet {
-                            pos: self.mini_game.player_pos,
-                            vel: dir * 10.0,
-                        });
-                    } else {
-                        // Desktop interaction
-                        // Check windows (top to bottom)
-                        let mut window_clicked = false;
-                        // Iterate in reverse to click top window first
-                        for i in (0..self.windows.len()).rev() {
-                            let win = &self.windows[i];
-                            if win.visible && win.rect.contains_point(mouse_pos) {
-                                // Close button logic (top right corner)
-                                let close_btn = Rectangle::new(win.rect.x + win.rect.width - 30.0, win.rect.y, 30.0, 30.0);
-                                if close_btn.contains_point(mouse_pos) {
-                                    self.windows.remove(i);
-                                }
-                                window_clicked = true;
-                                break;
-                            }
-                        }
-
-                        if !window_clicked {
-                            // Check icons
-                            let mut clicked_action = None;
-                            for icon in &self.icons {
-                                if icon.rect.contains_point(mouse_pos) {
-                                    clicked_action = Some(icon.action);
-                                    break;
-                                }
-                            }
-
-                            if let Some(action) = clicked_action {
-                                match action {
-                                    IconAction::OpenMail => {
-                                        self.open_window("Inbox - 1 Unread", "FROM: Unknown\nSUBJECT: SYSTEM CORRUPTION\n\nThe system is under attack. Unknown entities are\ncorrupting the memory blocks.\n\nI have installed a defense protocol 'System_Def'.\nRun it to purge the corruption.\n\nContact 'Glitch' on IRC channel #vibecoded-dev for more info.", WindowKind::Info);
-                                        self.mail_read = true;
-                                    }
-                                    IconAction::StartGame => {
-                                        self.mini_game.active = true;
-                                        self.mini_game.game_over = false;
-                                        self.mini_game.score = 0;
-                                        self.mini_game.timer = 60.0; // Survive 60 seconds
-                                        self.mini_game.enemies.clear();
-                                        self.mini_game.bullets.clear();
-                                    }
-                                    IconAction::OpenTerminal => {
-                                        self.open_window("Terminal", "root@vibecoded:~# ", WindowKind::Terminal);
-                                        self.terminal_input.clear();
-                                    }
-                                    IconAction::OpenChat => {
-                                        self.open_window("IRC - #vibecoded-dev", "", WindowKind::Chat);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
             Event::TextInput { text } => {
                 match self.scene {
                     Scene::LoginUsername | Scene::LoginPassword => {
@@ -474,26 +322,6 @@ impl State for GameState {
                             self.shell_input_buffer.push_str(&text);
                         }
                     }
-                    Scene::Desktop => {
-                        // Check active window
-                        if let Some(win) = self.windows.last_mut() {
-                            if win.visible {
-                                match win.kind {
-                                    WindowKind::Chat => {
-                                        if !text.chars().any(|c: char| c.is_control()) {
-                                            self.chat_system.input_buffer.push_str(&text);
-                                        }
-                                    }
-                                    WindowKind::Terminal => {
-                                        if !text.chars().any(|c: char| c.is_control()) {
-                                            self.terminal_input.push_str(&text);
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
-                    }
                     _ => {}
                 }
             }
@@ -505,76 +333,11 @@ impl State for GameState {
                     Scene::Menu => {
                         self.shell_input_buffer.pop();
                     }
-                    Scene::Desktop => {
-                        if let Some(win) = self.windows.last_mut() {
-                            if win.visible {
-                                match win.kind {
-                                    WindowKind::Chat => {
-                                        self.chat_system.input_buffer.pop();
-                                    }
-                                    WindowKind::Terminal => {
-                                        self.terminal_input.pop();
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
-                    }
                     _ => {}
                 }
             }
             Event::KeyPressed { key: Key::Enter } => {
                 match self.scene {
-                    Scene::Desktop => {
-                        if let Some(win) = self.windows.last_mut() {
-                            if win.visible {
-                                match win.kind {
-                                    WindowKind::Chat => {
-                                        let msg = self.chat_system.input_buffer.clone();
-                                        if !msg.is_empty() {
-                                            self.chat_system.messages.push(ChatMessage {
-                                                sender: "root".to_string(),
-                                                content: msg.clone(),
-                                                color: Color::WHITE,
-                                            });
-                                            self.chat_system.input_buffer.clear();
-                                            
-                                            // Simple NPC Logic Trigger
-                                            if self.chat_system.npc_state == NpcState::WaitingForHash {
-                                                if msg.trim() == "0xDEADBEEF" {
-                                                    self.chat_system.npc_state = NpcState::Success;
-                                                    self.chat_system.response_timer = 1.0;
-                                                } else {
-                                                    self.chat_system.messages.push(ChatMessage {
-                                                        sender: "Glitch".to_string(),
-                                                        content: "Invalid hash. Try again.".to_string(),
-                                                        color: Color::RED,
-                                                    });
-                                                }
-                                            }
-                                        }
-                                    }
-                                    WindowKind::Terminal => {
-                                        let cmd = self.terminal_input.clone();
-                                        self.terminal_history.push(format!("root@vibecoded:~# {}", cmd));
-                                        
-                                        if cmd.trim() == "sys_check" {
-                                            self.terminal_history.push("Scanning system integrity...".to_string());
-                                            self.terminal_history.push("[WARN] Kernel corruption detected.".to_string());
-                                            self.terminal_history.push("Integrity Hash: 0xDEADBEEF".to_string());
-                                        } else if cmd.trim() == "clear" {
-                                            self.terminal_history.clear();
-                                        } else if !cmd.trim().is_empty() {
-                                            self.terminal_history.push(format!("bash: {}: command not found", cmd));
-                                        }
-                                        
-                                        self.terminal_input.clear();
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
-                    }
                     Scene::LoginUsername => {
                         if self.input_buffer == "root" {
                             self.scene = Scene::LoginPassword;
@@ -595,82 +358,87 @@ impl State for GameState {
                         // Add welcome message
                         match self.language {
                             Language::English => {
-                                self.shell_history.push(("Welcome to VibeCoded Linux 1.0 LTS (GNU/Linux 6.9.420-vibecoded x86_64)".to_string(), Color::WHITE));
-                                self.shell_history.push(("".to_string(), Color::WHITE));
-                                self.shell_history.push((" * Documentation:  https://vibecoded.com/help".to_string(), Color::rgb(0.4, 0.4, 1.0)));
-                                self.shell_history.push((" * Management:     https://vibecoded.com/manage".to_string(), Color::rgb(0.4, 0.4, 1.0)));
-                                self.shell_history.push((" * Support:        https://vibecoded.com/support".to_string(), Color::rgb(0.4, 0.4, 1.0)));
-                                self.shell_history.push(("".to_string(), Color::WHITE));
-                                self.shell_history.push(("System information as of Fri Dec 30 13:37:00 UTC 2025".to_string(), Color::GREEN));
-                                self.shell_history.push(("".to_string(), Color::WHITE));
-                                self.shell_history.push(("  System load:  0.00               Processes:             1337".to_string(), Color::rgb(0.7, 0.7, 0.7)));
-                                self.shell_history.push(("  Usage of /:   69.0% of 420GB     Users logged in:       1".to_string(), Color::rgb(0.7, 0.7, 0.7)));
-                                self.shell_history.push(("  Memory usage: 14%                IPv4 address for eth0: 192.168.1.69".to_string(), Color::rgb(0.7, 0.7, 0.7)));
-                                self.shell_history.push(("  Swap usage:   0%".to_string(), Color::rgb(0.7, 0.7, 0.7)));
-                                self.shell_history.push(("".to_string(), Color::WHITE));
-                                self.shell_history.push(("0 updates can be applied immediately.".to_string(), Color::GREEN));
-                                self.shell_history.push(("".to_string(), Color::WHITE));
-                                self.shell_history.push(("Last login: Fri Dec 27 12:00:00 2025 from 10.0.0.1".to_string(), Color::rgb(0.5, 0.5, 0.5)));
-                                self.shell_history.push(("Type 'help' for a list of commands.".to_string(), Color::rgb(1.0, 1.0, 0.0)));
+                                self.add_shell_message("Welcome to VibeCoded Linux 1.0 LTS (GNU/Linux 6.9.420-vibecoded x86_64)".to_string(), Color::WHITE);
+                                self.add_shell_message("".to_string(), Color::WHITE);
+                                self.add_shell_message(" * Documentation:  https://vibecoded.com/help".to_string(), Color::rgb(0.4, 0.4, 1.0));
+                                self.add_shell_message(" * Management:     https://vibecoded.com/manage".to_string(), Color::rgb(0.4, 0.4, 1.0));
+                                self.add_shell_message(" * Support:        https://vibecoded.com/support".to_string(), Color::rgb(0.4, 0.4, 1.0));
+                                self.add_shell_message("".to_string(), Color::WHITE);
+                                self.add_shell_message("System information as of Fri Dec 30 13:37:00 UTC 2025".to_string(), Color::GREEN);
+                                self.add_shell_message("".to_string(), Color::WHITE);
+                                self.add_shell_message("  System load:  0.00               Processes:             1337".to_string(), Color::rgb(0.7, 0.7, 0.7));
+                                self.add_shell_message("  Usage of /:   69.0% of 420GB     Users logged in:       1".to_string(), Color::rgb(0.7, 0.7, 0.7));
+                                self.add_shell_message("  Memory usage: 14%                IPv4 address for eth0: 192.168.1.69".to_string(), Color::rgb(0.7, 0.7, 0.7));
+                                self.add_shell_message("  Swap usage:   0%".to_string(), Color::rgb(0.7, 0.7, 0.7));
+                                self.add_shell_message("".to_string(), Color::WHITE);
+                                self.add_shell_message("0 updates can be applied immediately.".to_string(), Color::GREEN);
+                                self.add_shell_message("".to_string(), Color::WHITE);
+                                self.add_shell_message("Last login: Fri Dec 27 12:00:00 2025 from 10.0.0.1".to_string(), Color::rgb(0.5, 0.5, 0.5));
+                                self.add_shell_message("Type 'help' for a list of commands.".to_string(), Color::rgb(1.0, 1.0, 0.0));
                             }
                             Language::Turkish => {
-                                self.shell_history.push(("VibeCoded Linux 1.0 LTS'e Hosgeldiniz (GNU/Linux 6.9.420-vibecoded x86_64)".to_string(), Color::WHITE));
-                                self.shell_history.push(("".to_string(), Color::WHITE));
-                                self.shell_history.push((" * Dokumantasyon:  https://vibecoded.com/help".to_string(), Color::rgb(0.4, 0.4, 1.0)));
-                                self.shell_history.push((" * Yonetim:        https://vibecoded.com/manage".to_string(), Color::rgb(0.4, 0.4, 1.0)));
-                                self.shell_history.push((" * Destek:         https://vibecoded.com/support".to_string(), Color::rgb(0.4, 0.4, 1.0)));
-                                self.shell_history.push(("".to_string(), Color::WHITE));
-                                self.shell_history.push(("Sistem bilgisi: Cum Ara 30 13:37:00 UTC 2025".to_string(), Color::GREEN));
-                                self.shell_history.push(("".to_string(), Color::WHITE));
-                                self.shell_history.push(("  Sistem yuku:    0.00               Islemler:              1337".to_string(), Color::rgb(0.7, 0.7, 0.7)));
-                                self.shell_history.push(("  Disk kullanimi: %69 / 420GB        Giris yapanlar:        1".to_string(), Color::rgb(0.7, 0.7, 0.7)));
-                                self.shell_history.push(("  Bellek:         %14                eth0 IPv4 adresi:      192.168.1.69".to_string(), Color::rgb(0.7, 0.7, 0.7)));
-                                self.shell_history.push(("  Takas alani:    %0".to_string(), Color::rgb(0.7, 0.7, 0.7)));
-                                self.shell_history.push(("".to_string(), Color::WHITE));
-                                self.shell_history.push(("0 guncelleme hemen uygulanabilir.".to_string(), Color::GREEN));
-                                self.shell_history.push(("".to_string(), Color::WHITE));
-                                self.shell_history.push(("Son giris: Cum Ara 27 12:00:00 2025 - 10.0.0.1".to_string(), Color::rgb(0.5, 0.5, 0.5)));
-                                self.shell_history.push(("Komut listesi icin 'help' yazin.".to_string(), Color::rgb(1.0, 1.0, 0.0)));
+                                self.add_shell_message("VibeCoded Linux 1.0 LTS'e Hosgeldiniz (GNU/Linux 6.9.420-vibecoded x86_64)".to_string(), Color::WHITE);
+                                self.add_shell_message("".to_string(), Color::WHITE);
+                                self.add_shell_message(" * Dokumantasyon:  https://vibecoded.com/help".to_string(), Color::rgb(0.4, 0.4, 1.0));
+                                self.add_shell_message(" * Yonetim:        https://vibecoded.com/manage".to_string(), Color::rgb(0.4, 0.4, 1.0));
+                                self.add_shell_message(" * Destek:         https://vibecoded.com/support".to_string(), Color::rgb(0.4, 0.4, 1.0));
+                                self.add_shell_message("".to_string(), Color::WHITE);
+                                self.add_shell_message("Sistem bilgisi: Cum Ara 30 13:37:00 UTC 2025".to_string(), Color::GREEN);
+                                self.add_shell_message("".to_string(), Color::WHITE);
+                                self.add_shell_message("  Sistem yuku:    0.00               Islemler:              1337".to_string(), Color::rgb(0.7, 0.7, 0.7));
+                                self.add_shell_message("  Disk kullanimi: %69 / 420GB        Giris yapanlar:        1".to_string(), Color::rgb(0.7, 0.7, 0.7));
+                                self.add_shell_message("  Bellek:         %14                eth0 IPv4 adresi:      192.168.1.69".to_string(), Color::rgb(0.7, 0.7, 0.7));
+                                self.add_shell_message("  Takas alani:    %0".to_string(), Color::rgb(0.7, 0.7, 0.7));
+                                self.add_shell_message("".to_string(), Color::WHITE);
+                                self.add_shell_message("0 guncelleme hemen uygulanabilir.".to_string(), Color::GREEN);
+                                self.add_shell_message("".to_string(), Color::WHITE);
+                                self.add_shell_message("Son giris: Cum Ara 27 12:00:00 2025 - 10.0.0.1".to_string(), Color::rgb(0.5, 0.5, 0.5));
+                                self.add_shell_message("Komut listesi icin 'help' yazin.".to_string(), Color::rgb(1.0, 1.0, 0.0));
                             }
                         }
                     }
                     Scene::Menu => {
                         let cmd = self.shell_input_buffer.trim().to_string();
-                        self.shell_history.push((format!("root@vibecoded:~# {}", cmd), Color::WHITE));
+                        self.add_shell_message(format!("root@vibecoded:~# {}", cmd), Color::WHITE);
                         
                         match cmd.as_str() {
                             "startx" => {
                                 self.scene = Scene::TransitionToDesktop;
                                 self.transition_timer = 0.0;
                                 self.session_started = true;
+                                // Reset game state on start
+                                self.player_health = 100.0;
+                                self.current_stage = 1;
+                                self.player_pos = Vec2::new(400.0, 300.0);
+                                self.player_direction = Direction::Front;
                             }
                             "help" => {
                                 match self.language {
                                     Language::English => {
-                                        self.shell_history.push(("GNU bash, version 5.0.17(1)-release (x86_64-pc-linux-gnu)".to_string(), Color::rgb(0.7, 0.7, 0.7)));
-                                        self.shell_history.push(("These shell commands are defined internally.  Type `help' to see this list.".to_string(), Color::rgb(0.7, 0.7, 0.7)));
-                                        self.shell_history.push(("".to_string(), Color::WHITE));
-                                        self.shell_history.push(("  startx      Start the graphical desktop environment (Game)".to_string(), Color::GREEN));
-                                        self.shell_history.push(("  config      Open system configuration".to_string(), Color::rgb(0.0, 1.0, 1.0)));
-                                        self.shell_history.push(("  logout      Log out of the system".to_string(), Color::rgb(0.0, 1.0, 1.0)));
-                                        self.shell_history.push(("  reboot      Reboot the system".to_string(), Color::rgb(0.0, 1.0, 1.0)));
-                                        self.shell_history.push(("  shutdown    Power off the system".to_string(), Color::rgb(0.0, 1.0, 1.0)));
-                                        self.shell_history.push(("  clear       Clear the terminal screen".to_string(), Color::rgb(0.0, 1.0, 1.0)));
-                                        self.shell_history.push(("  whoami      Print effective userid".to_string(), Color::rgb(0.0, 1.0, 1.0)));
-                                        self.shell_history.push(("  uname -a    Print system information".to_string(), Color::rgb(0.0, 1.0, 1.0)));
+                                        self.add_shell_message("GNU bash, version 5.0.17(1)-release (x86_64-pc-linux-gnu)".to_string(), Color::rgb(0.7, 0.7, 0.7));
+                                        self.add_shell_message("These shell commands are defined internally.  Type `help' to see this list.".to_string(), Color::rgb(0.7, 0.7, 0.7));
+                                        self.add_shell_message("".to_string(), Color::WHITE);
+                                        self.add_shell_message("  startx      Start the graphical desktop environment (Game)".to_string(), Color::GREEN);
+                                        self.add_shell_message("  config      Open system configuration".to_string(), Color::rgb(0.0, 1.0, 1.0));
+                                        self.add_shell_message("  logout      Log out of the system".to_string(), Color::rgb(0.0, 1.0, 1.0));
+                                        self.add_shell_message("  reboot      Reboot the system".to_string(), Color::rgb(0.0, 1.0, 1.0));
+                                        self.add_shell_message("  shutdown    Power off the system".to_string(), Color::rgb(0.0, 1.0, 1.0));
+                                        self.add_shell_message("  clear       Clear the terminal screen".to_string(), Color::rgb(0.0, 1.0, 1.0));
+                                        self.add_shell_message("  whoami      Print effective userid".to_string(), Color::rgb(0.0, 1.0, 1.0));
+                                        self.add_shell_message("  uname -a    Print system information".to_string(), Color::rgb(0.0, 1.0, 1.0));
                                     }
                                     Language::Turkish => {
-                                        self.shell_history.push(("GNU bash, surum 5.0.17(1)-release (x86_64-pc-linux-gnu)".to_string(), Color::rgb(0.7, 0.7, 0.7)));
-                                        self.shell_history.push(("Bu kabuk komutlari dahili olarak tanimlanmistir. Listeyi gormek icin `help' yazin.".to_string(), Color::rgb(0.7, 0.7, 0.7)));
-                                        self.shell_history.push(("".to_string(), Color::WHITE));
-                                        self.shell_history.push(("  startx      Grafik masaustu ortamini baslat (Oyun)".to_string(), Color::GREEN));
-                                        self.shell_history.push(("  config      Sistem yapilandirmasini ac".to_string(), Color::rgb(0.0, 1.0, 1.0)));
-                                        self.shell_history.push(("  logout      Sistemden cikis yap".to_string(), Color::rgb(0.0, 1.0, 1.0)));
-                                        self.shell_history.push(("  reboot      Sistemi yeniden baslat".to_string(), Color::rgb(0.0, 1.0, 1.0)));
-                                        self.shell_history.push(("  shutdown    Sistemi kapat".to_string(), Color::rgb(0.0, 1.0, 1.0)));
-                                        self.shell_history.push(("  clear       Terminal ekranini temizle".to_string(), Color::rgb(0.0, 1.0, 1.0)));
-                                        self.shell_history.push(("  whoami      Gecerli kullanici kimligini yazdir".to_string(), Color::rgb(0.0, 1.0, 1.0)));
-                                        self.shell_history.push(("  uname -a    Sistem bilgilerini yazdir".to_string(), Color::rgb(0.0, 1.0, 1.0)));
+                                        self.add_shell_message("GNU bash, surum 5.0.17(1)-release (x86_64-pc-linux-gnu)".to_string(), Color::rgb(0.7, 0.7, 0.7));
+                                        self.add_shell_message("Bu kabuk komutlari dahili olarak tanimlanmistir. Listeyi gormek icin `help' yazin.".to_string(), Color::rgb(0.7, 0.7, 0.7));
+                                        self.add_shell_message("".to_string(), Color::WHITE);
+                                        self.add_shell_message("  startx      Grafik masaustu ortamini baslat (Oyun)".to_string(), Color::GREEN);
+                                        self.add_shell_message("  config      Sistem yapilandirmasini ac".to_string(), Color::rgb(0.0, 1.0, 1.0));
+                                        self.add_shell_message("  logout      Sistemden cikis yap".to_string(), Color::rgb(0.0, 1.0, 1.0));
+                                        self.add_shell_message("  reboot      Sistemi yeniden baslat".to_string(), Color::rgb(0.0, 1.0, 1.0));
+                                        self.add_shell_message("  shutdown    Sistemi kapat".to_string(), Color::rgb(0.0, 1.0, 1.0));
+                                        self.add_shell_message("  clear       Terminal ekranini temizle".to_string(), Color::rgb(0.0, 1.0, 1.0));
+                                        self.add_shell_message("  whoami      Gecerli kullanici kimligini yazdir".to_string(), Color::rgb(0.0, 1.0, 1.0));
+                                        self.add_shell_message("  uname -a    Sistem bilgilerini yazdir".to_string(), Color::rgb(0.0, 1.0, 1.0));
                                     }
                                 }
                             }
@@ -679,13 +447,13 @@ impl State for GameState {
                             "reboot" => self.reset(),
                             "shutdown" => std::process::exit(0),
                             "clear" => self.shell_history.clear(),
-                            "whoami" => self.shell_history.push(("root".to_string(), Color::WHITE)),
-                            "uname -a" => self.shell_history.push(("Linux vibecoded 6.9.420-vibecoded #1 SMP PREEMPT Fri Dec 30 13:37:00 UTC 2025 x86_64 GNU/Linux".to_string(), Color::WHITE)),
+                            "whoami" => self.add_shell_message("root".to_string(), Color::WHITE),
+                            "uname -a" => self.add_shell_message("Linux vibecoded 6.9.420-vibecoded #1 SMP PREEMPT Fri Dec 30 13:37:00 UTC 2025 x86_64 GNU/Linux".to_string(), Color::WHITE),
                             "" => {}, // Do nothing on empty enter
                             _ => {
                                 match self.language {
-                                    Language::English => self.shell_history.push((format!("bash: {}: command not found", cmd), Color::RED)),
-                                    Language::Turkish => self.shell_history.push((format!("bash: {}: komut bulunamadi", cmd), Color::RED)),
+                                    Language::English => self.add_shell_message(format!("bash: {}: command not found", cmd), Color::RED),
+                                    Language::Turkish => self.add_shell_message(format!("bash: {}: komut bulunamadi", cmd), Color::RED),
                                 }
                             }
                         }
@@ -710,11 +478,7 @@ impl State for GameState {
             Event::KeyPressed { key: Key::Escape } => {
                 match self.scene {
                     Scene::Desktop => {
-                        if self.mini_game.active {
-                            self.mini_game.active = false;
-                        } else {
-                            self.scene = Scene::Menu;
-                        }
+                        self.scene = Scene::Menu;
                     }
                     Scene::Config => {
                         self.scene = Scene::Menu;
@@ -810,156 +574,60 @@ impl State for GameState {
                 }
             }
             Scene::Desktop => {
-                // NPC Chat Logic
-                if self.chat_system.response_timer > 0.0 {
-                    self.chat_system.response_timer -= 1.0 / 60.0;
-                    if self.chat_system.response_timer <= 0.0 {
-                        match self.chat_system.npc_state {
-                            NpcState::Intro => {
-                                self.chat_system.messages.push(ChatMessage {
-                                    sender: "Glitch".to_string(),
-                                    content: "Who is this? Are you the admin?".to_string(),
-                                    color: Color::rgb(1.0, 1.0, 0.0),
-                                });
-                                self.chat_system.npc_state = NpcState::WaitingForHash;
-                                // Actually let's make it simpler, just ask for hash immediately after intro
-                                self.chat_system.messages.push(ChatMessage {
-                                    sender: "Glitch".to_string(),
-                                    content: "If you are, prove it. Give me the system integrity hash.".to_string(),
-                                    color: Color::rgb(1.0, 1.0, 0.0),
-                                });
-                                self.chat_system.messages.push(ChatMessage {
-                                    sender: "Glitch".to_string(),
-                                    content: "Run 'sys_check' in the terminal.".to_string(),
-                                    color: Color::rgb(1.0, 1.0, 0.0),
-                                });
-                            }
-                            NpcState::Success => {
-                                self.chat_system.messages.push(ChatMessage {
-                                    sender: "Glitch".to_string(),
-                                    content: "Hash verified. You are the admin.".to_string(),
-                                    color: Color::GREEN,
-                                });
-                                self.chat_system.messages.push(ChatMessage {
-                                    sender: "Glitch".to_string(),
-                                    content: "I've unlocked the 'Deep Scan' mode in System_Def.".to_string(),
-                                    color: Color::GREEN,
-                                });
-                                self.chat_system.messages.push(ChatMessage {
-                                    sender: "Glitch".to_string(),
-                                    content: "Go purge them all.".to_string(),
-                                    color: Color::GREEN,
-                                });
-                                // Unlock something in game (e.g. level 2 or just stronger weapon)
-                                self.mini_game.level = 2; 
-                            }
-                            _ => {}
-                        }
+                let speed = 2.0;
+                if input::is_key_down(ctx, Key::W) || input::is_key_down(ctx, Key::Up) {
+                    self.player_pos.y -= speed;
+                    self.player_direction = Direction::Front;
+                }
+                if input::is_key_down(ctx, Key::S) || input::is_key_down(ctx, Key::Down) {
+                    self.player_pos.y += speed;
+                    self.player_direction = Direction::Front;
+                }
+                if input::is_key_down(ctx, Key::A) || input::is_key_down(ctx, Key::Left) {
+                    self.player_pos.x -= speed;
+                    self.player_direction = Direction::Left;
+                }
+                if input::is_key_down(ctx, Key::D) || input::is_key_down(ctx, Key::Right) {
+                    self.player_pos.x += speed;
+                    self.player_direction = Direction::Right;
+                }
+
+                // Stage Transition Logic
+                if self.player_pos.x > SCREEN_WIDTH as f32 {
+                    self.current_stage += 1;
+                    if self.current_stage > 3 {
+                        self.current_stage = 1;
+                    }
+                    self.player_pos.x = 0.0;
+                } else if self.player_pos.x < 0.0 {
+                    // Optional: Go back? For now just clamp or wrap
+                    if self.current_stage > 1 {
+                        self.current_stage -= 1;
+                        self.player_pos.x = SCREEN_WIDTH as f32;
+                    } else {
+                        self.player_pos.x = 0.0;
                     }
                 }
 
-                if self.mini_game.active {
-                    if !self.mini_game.game_over {
-                        // Player Movement
-                        let speed = 5.0;
-                        if input::is_key_down(ctx, Key::W) { self.mini_game.player_pos.y -= speed; }
-                        if input::is_key_down(ctx, Key::S) { self.mini_game.player_pos.y += speed; }
-                        if input::is_key_down(ctx, Key::A) { self.mini_game.player_pos.x -= speed; }
-                        if input::is_key_down(ctx, Key::D) { self.mini_game.player_pos.x += speed; }
-
-                        // Clamp player to screen
-                        self.mini_game.player_pos.x = self.mini_game.player_pos.x.clamp(0.0, SCREEN_WIDTH as f32);
-                        self.mini_game.player_pos.y = self.mini_game.player_pos.y.clamp(0.0, SCREEN_HEIGHT as f32);
-
-                        // Update Bullets
-                        self.mini_game.bullets.retain_mut(|b| {
-                            b.pos += b.vel;
-                            b.pos.x > 0.0 && b.pos.x < SCREEN_WIDTH as f32 && b.pos.y > 0.0 && b.pos.y < SCREEN_HEIGHT as f32
-                        });
-
-                        // Spawn Enemies
-                        self.mini_game.spawn_timer += 1.0;
-                        // Increase difficulty based on level
-                        let spawn_rate = if self.mini_game.level > 1 { 30.0 } else { 60.0 };
-                        
-                        if self.mini_game.spawn_timer > spawn_rate { 
-                            self.mini_game.spawn_timer = 0.0;
-                            let mut rng = rand::thread_rng();
-                            let side = rng.gen_range(0..4);
-                            let pos = match side {
-                                0 => Vec2::new(rng.gen_range(0.0..SCREEN_WIDTH as f32), -20.0), // Top
-                                1 => Vec2::new(rng.gen_range(0.0..SCREEN_WIDTH as f32), SCREEN_HEIGHT as f32 + 20.0), // Bottom
-                                2 => Vec2::new(-20.0, rng.gen_range(0.0..SCREEN_HEIGHT as f32)), // Left
-                                _ => Vec2::new(SCREEN_WIDTH as f32 + 20.0, rng.gen_range(0.0..SCREEN_HEIGHT as f32)), // Right
-                            };
-                            self.mini_game.enemies.push(Enemy { pos, size: 20.0 });
-                        }
-
-                        // Update Enemies
-                        let player_pos = self.mini_game.player_pos;
-                        let enemy_speed = if self.mini_game.level > 1 { 3.0 } else { 2.0 };
-                        for enemy in &mut self.mini_game.enemies {
-                            let dir = (player_pos - enemy.pos).normalized();
-                            enemy.pos += dir * enemy_speed;
-                        }
-
-                        // Collision: Bullet vs Enemy
-                        let mut bullets_to_remove = Vec::new();
-                        let mut enemies_to_remove = Vec::new();
-
-                        for (b_idx, bullet) in self.mini_game.bullets.iter().enumerate() {
-                            for (e_idx, enemy) in self.mini_game.enemies.iter().enumerate() {
-                                if bullet.pos.distance(enemy.pos) < enemy.size {
-                                    bullets_to_remove.push(b_idx);
-                                    enemies_to_remove.push(e_idx);
-                                    self.mini_game.score += 10;
-                                }
-                            }
-                        }
-                        
-                        // Remove collided (simple approach, might miss some if multiple hit same frame but ok for simple game)
-                        // Sort and dedup to avoid index issues
-                        bullets_to_remove.sort(); bullets_to_remove.dedup();
-                        enemies_to_remove.sort(); enemies_to_remove.dedup();
-                        
-                        for i in bullets_to_remove.iter().rev() { self.mini_game.bullets.remove(*i); }
-                        for i in enemies_to_remove.iter().rev() { self.mini_game.enemies.remove(*i); }
-
-                        // Collision: Enemy vs Player
-                        for enemy in &self.mini_game.enemies {
-                            if enemy.pos.distance(player_pos) < 20.0 {
-                                self.mini_game.game_over = true;
-                            }
-                        }
-
-                        // Timer
-                        self.mini_game.timer -= 1.0 / 60.0; // Approx dt
-                        if self.mini_game.timer <= 0.0 {
-                            self.mini_game.game_over = true; // Win condition actually, but stop game loop
-                            // Handle Win
-                            self.open_window("System Alert", "THREAT ELIMINATED.\n\nCore integrity restored.\nNew data decrypted: 'The Architect lives.'", WindowKind::Info);
-                            self.mini_game.active = false;
-                        }
-                    } else {
-                        if input::is_key_pressed(ctx, Key::R) {
-                            // Restart
-                            self.mini_game.active = true;
-                            self.mini_game.game_over = false;
-                            self.mini_game.score = 0;
-                            self.mini_game.timer = 60.0;
-                            self.mini_game.enemies.clear();
-                            self.mini_game.bullets.clear();
-                        }
-                        if input::is_key_pressed(ctx, Key::Escape) {
-                            self.mini_game.active = false;
-                        }
+                // Dead Space Logic (Stage 3, Right Side)
+                if self.current_stage == 3 && self.player_pos.x > 500.0 {
+                    self.player_health -= 0.5; // Damage multiplier
+                    
+                    if self.player_health <= 0.0 {
+                        // Game Over -> Kernel Panic
+                        self.generate_kernel_panic();
+                        self.scene = Scene::KernelPanic;
+                        self.session_started = false;
                     }
-                } else {
-                    // Simple desktop logic (maybe move cursor with mouse later)
                 }
             }
             Scene::Config => {
                 // Config logic
+            }
+            Scene::KernelPanic => {
+                if input::is_key_pressed(ctx, Key::Enter) {
+                    self.reset();
+                }
             }
         }
         Ok(())
@@ -1050,30 +718,32 @@ impl State for GameState {
                 
                 // Draw "vibecoded login: "
                 let login_prompt = "user login: ";
-                let mut prompt_text = Text::new(login_prompt, self.font.clone());
-                prompt_text.draw(ctx, DrawParams::new().position(Vec2::new(20.0, y)).color(Color::WHITE));
                 
                 if let Scene::LoginUsername = self.scene {
-                    let input_display = format!("{}{}", self.input_buffer, if self.cursor_visible { "_" } else { "" });
-                    let mut input_text = Text::new(input_display, self.font.clone());
-                    let prompt_width = prompt_text.get_bounds(ctx).map(|b| b.width).unwrap_or(0.0);
-                    input_text.draw(ctx, DrawParams::new().position(Vec2::new(20.0 + prompt_width, y)).color(Color::WHITE));
+                    let full_text = format!("{}{}{}", login_prompt, self.input_buffer, if self.cursor_visible { "_" } else { "" });
+                    let lines = wrap_text(&full_text, 75);
+                    for line in lines {
+                        let mut text = Text::new(line, self.font.clone());
+                        text.draw(ctx, DrawParams::new().position(Vec2::new(20.0, y)).color(Color::WHITE));
+                        y += 20.0;
+                    }
                 } else {
                     // If password state, draw "root" as already entered
-                    let mut root_text = Text::new("root", self.font.clone());
-                    let prompt_width = prompt_text.get_bounds(ctx).map(|b| b.width).unwrap_or(0.0);
-                    root_text.draw(ctx, DrawParams::new().position(Vec2::new(20.0 + prompt_width, y)).color(Color::WHITE));
-                    
+                    let full_text = format!("{}root", login_prompt);
+                    let mut text = Text::new(full_text, self.font.clone());
+                    text.draw(ctx, DrawParams::new().position(Vec2::new(20.0, y)).color(Color::WHITE));
                     y += 24.0;
-                    let pass_prompt = "Password: ";
-                    let mut pass_text = Text::new(pass_prompt, self.font.clone());
-                    pass_text.draw(ctx, DrawParams::new().position(Vec2::new(20.0, y)).color(Color::WHITE));
                     
+                    let pass_prompt = "Password: ";
                     let masked_input: String = self.input_buffer.chars().map(|_| '*').collect();
-                    let input_display = format!("{}{}", masked_input, if self.cursor_visible { "_" } else { "" });
-                    let mut input_text = Text::new(input_display, self.font.clone());
-                    let pass_width = pass_text.get_bounds(ctx).map(|b| b.width).unwrap_or(0.0);
-                    input_text.draw(ctx, DrawParams::new().position(Vec2::new(20.0 + pass_width, y)).color(Color::WHITE));
+                    let full_pass_text = format!("{}{}{}", pass_prompt, masked_input, if self.cursor_visible { "_" } else { "" });
+                    
+                    let lines = wrap_text(&full_pass_text, 75);
+                    for line in lines {
+                        let mut text = Text::new(line, self.font.clone());
+                        text.draw(ctx, DrawParams::new().position(Vec2::new(20.0, y)).color(Color::WHITE));
+                        y += 20.0;
+                    }
                 }
 
                 if let Some(err) = &self.login_error {
@@ -1115,8 +785,12 @@ impl State for GameState {
                 
                 // Draw Prompt
                 let prompt = format!("root@vibecoded:~# {}{}", self.shell_input_buffer, if self.shell_cursor_visible { "_" } else { "" });
-                let mut prompt_text = Text::new(prompt, self.font.clone());
-                prompt_text.draw(ctx, DrawParams::new().position(Vec2::new(20.0, y)).color(Color::WHITE));
+                let lines = wrap_text(&prompt, 75);
+                for line in lines {
+                    let mut prompt_text = Text::new(line, self.font.clone());
+                    prompt_text.draw(ctx, DrawParams::new().position(Vec2::new(20.0, y)).color(Color::WHITE));
+                    y += 20.0;
+                }
                 
                 // Transition Effect
                 if t > 0.0 {
@@ -1128,114 +802,85 @@ impl State for GameState {
                 }
             }
             Scene::Desktop => {
-                if self.mini_game.active {
-                    // Draw Game
-                    graphics::clear(ctx, Color::rgb(0.1, 0.0, 0.0)); // Dark Red background
-                    
-                    // Draw Grid
-                    // ... (skip for brevity, just simple background)
+                graphics::clear(ctx, Color::BLACK);
+                
+                // Draw background (scaled to fill screen)
+                // Assuming bg is not exactly screen size, we scale it
+                let bg_width = self.bg_texture.width() as f32;
+                let bg_height = self.bg_texture.height() as f32;
+                let scale_x = SCREEN_WIDTH as f32 / bg_width;
+                let scale_y = SCREEN_HEIGHT as f32 / bg_height;
+                
+                self.bg_texture.draw(ctx, DrawParams::new()
+                    .position(Vec2::new(0.0, 0.0))
+                    .scale(Vec2::new(scale_x, scale_y))
+                    .color(if self.current_stage == 1 { Color::WHITE } 
+                           else if self.current_stage == 2 { Color::rgb(0.8, 0.8, 1.0) } // Blueish tint
+                           else { Color::rgb(1.0, 0.8, 0.8) }) // Reddish tint
+                );
 
-                    // Draw Player
-                    let player_rect = Mesh::rectangle(ctx, ShapeStyle::Fill, Rectangle::new(0.0, 0.0, 20.0, 20.0)).unwrap();
-                    player_rect.draw(ctx, DrawParams::new().position(self.mini_game.player_pos - Vec2::new(10.0, 10.0)).color(Color::GREEN));
-
-                    // Draw Enemies
-                    let enemy_rect = Mesh::rectangle(ctx, ShapeStyle::Fill, Rectangle::new(0.0, 0.0, 20.0, 20.0)).unwrap();
-                    for enemy in &self.mini_game.enemies {
-                        enemy_rect.draw(ctx, DrawParams::new().position(enemy.pos - Vec2::new(10.0, 10.0)).color(Color::RED));
-                    }
-
-                    // Draw Bullets
-                    let bullet_rect = Mesh::rectangle(ctx, ShapeStyle::Fill, Rectangle::new(0.0, 0.0, 5.0, 5.0)).unwrap();
-                    for bullet in &self.mini_game.bullets {
-                        bullet_rect.draw(ctx, DrawParams::new().position(bullet.pos).color(Color::rgb(1.0, 1.0, 0.0)));
-                    }
-
-                    // UI
-                    let mut score_text = Text::new(format!("Score: {}", self.mini_game.score), self.font.clone());
-                    score_text.draw(ctx, DrawParams::new().position(Vec2::new(10.0, 10.0)).color(Color::WHITE));
-                    
-                    let mut time_text = Text::new(format!("Time: {:.1}", self.mini_game.timer), self.font.clone());
-                    time_text.draw(ctx, DrawParams::new().position(Vec2::new(SCREEN_WIDTH as f32 - 150.0, 10.0)).color(Color::WHITE));
-
-                    if self.mini_game.game_over && self.mini_game.timer > 0.0 {
-                        let mut over_text = Text::new("GAME OVER - Press R to Restart, ESC to Exit", self.font.clone());
-                        over_text.draw(ctx, DrawParams::new().position(Vec2::new(200.0, 300.0)).color(Color::RED));
-                    }
-
-                } else {
-                    graphics::clear(ctx, Color::rgb(0.0, 0.5, 0.5)); // Teal background
-                    
-                    // Draw Icons
-                    for icon in &self.icons {
-                        let icon_mesh = Mesh::rectangle(ctx, ShapeStyle::Fill, icon.rect).unwrap();
-                        icon_mesh.draw(ctx, DrawParams::new().color(icon.color));
-                        
-                        let mut label = Text::new(&icon.label, self.font.clone());
-                        label.draw(ctx, DrawParams::new().position(Vec2::new(icon.rect.x, icon.rect.y + 70.0)).color(Color::WHITE));
-                    }
-
-                    // Draw Windows
-                    for win in &self.windows {
-                        if win.visible {
-                            // Window Body
-                            self.window_mesh.draw(ctx, DrawParams::new().position(Vec2::new(win.rect.x, win.rect.y)).color(Color::rgb(0.8, 0.8, 0.8)));
-                            
-                            // Title Bar
-                            self.title_bar_mesh.draw(ctx, DrawParams::new().position(Vec2::new(win.rect.x, win.rect.y)).color(Color::rgb(0.0, 0.0, 0.5)));
-                            
-                            let mut title = Text::new(&win.title, self.font.clone());
-                            title.draw(ctx, DrawParams::new().position(Vec2::new(win.rect.x + 10.0, win.rect.y + 5.0)).color(Color::WHITE));
-                            
-                            // Close Button (X)
-                            let mut close = Text::new("X", self.font.clone());
-                            close.draw(ctx, DrawParams::new().position(Vec2::new(win.rect.x + win.rect.width - 25.0, win.rect.y + 5.0)).color(Color::WHITE));
-
-                            // Content
-                            match win.kind {
-                                WindowKind::Chat => {
-                                    let mut y_offset = 40.0;
-                                    // Draw messages (simple scrolling, just show last 10)
-                                    let start_idx = if self.chat_system.messages.len() > 10 { self.chat_system.messages.len() - 10 } else { 0 };
-                                    for msg in self.chat_system.messages.iter().skip(start_idx) {
-                                        let display = format!("{}: {}", msg.sender, msg.content);
-                                        let mut text = Text::new(display, self.font.clone());
-                                        text.draw(ctx, DrawParams::new().position(Vec2::new(win.rect.x + 10.0, win.rect.y + y_offset)).color(msg.color));
-                                        y_offset += 20.0;
-                                    }
-                                    
-                                    // Draw Input Line
-                                    let input_display = format!("> {}_", self.chat_system.input_buffer);
-                                    let mut input_text = Text::new(input_display, self.font.clone());
-                                    input_text.draw(ctx, DrawParams::new().position(Vec2::new(win.rect.x + 10.0, win.rect.y + 270.0)).color(Color::WHITE));
-                                }
-                                WindowKind::Terminal => {
-                                    let mut y_offset = 40.0;
-                                    // Draw history (last 10 lines)
-                                    let start_idx = if self.terminal_history.len() > 10 { self.terminal_history.len() - 10 } else { 0 };
-                                    for line in self.terminal_history.iter().skip(start_idx) {
-                                        let mut text = Text::new(line, self.font.clone());
-                                        text.draw(ctx, DrawParams::new().position(Vec2::new(win.rect.x + 10.0, win.rect.y + y_offset)).color(Color::WHITE));
-                                        y_offset += 20.0;
-                                    }
-                                    
-                                    // Draw Input Line
-                                    let input_display = format!("root@vibecoded:~# {}_", self.terminal_input);
-                                    let mut input_text = Text::new(input_display, self.font.clone());
-                                    input_text.draw(ctx, DrawParams::new().position(Vec2::new(win.rect.x + 10.0, win.rect.y + y_offset)).color(Color::WHITE));
-                                }
-                                _ => {
-                                    let mut content = Text::new(&win.content, self.font.clone());
-                                    content.draw(ctx, DrawParams::new().position(Vec2::new(win.rect.x + 10.0, win.rect.y + 40.0)).color(Color::BLACK));
-                                }
-                            }
-                        }
-                    }
-                    
-                    // Mouse Cursor (Simple Triangle)
-                    let mouse_pos = input::get_mouse_position(ctx);
-                    self.cursor_mesh.draw(ctx, DrawParams::new().position(mouse_pos).color(Color::WHITE));
+                // Draw Dead Space (Stage 3)
+                if self.current_stage == 3 {
+                    let dead_space_rect = Mesh::rectangle(
+                        ctx,
+                        ShapeStyle::Fill,
+                        Rectangle::new(500.0, 0.0, 300.0, SCREEN_HEIGHT as f32),
+                    )?;
+                    dead_space_rect.draw(ctx, DrawParams::new().color(Color::rgba(1.0, 0.0, 0.0, 0.3)));
                 }
+                
+                // Draw player
+                let texture = match self.player_direction {
+                    Direction::Front => &self.player_texture_front,
+                    Direction::Left => &self.player_texture_left,
+                    Direction::Right => &self.player_texture_right,
+                };
+                
+                // Center the sprite on player_pos
+                let width = texture.width() as f32;
+                let height = texture.height() as f32;
+                let origin = Vec2::new(width / 2.0, height / 2.0);
+                
+                // Scale up the character (e.g. 3x)
+                texture.draw(ctx, DrawParams::new()
+                    .position(self.player_pos)
+                    .origin(origin)
+                    .scale(Vec2::new(3.0, 3.0))
+                );
+                
+                // Draw Stage Indicator
+                let stage_text = format!("Stage: {}/3", self.current_stage);
+                let mut text = Text::new(stage_text, self.font.clone());
+                text.draw(ctx, DrawParams::new().position(Vec2::new(10.0, 10.0)).color(Color::WHITE));
+
+                // Draw Health Bar (Top Right)
+                let bar_width = 150.0;
+                let bar_height = 15.0;
+                let padding = 10.0;
+                let bar_x = SCREEN_WIDTH as f32 - bar_width - padding;
+                let bar_y = 10.0;
+
+                let health_bar_bg = Mesh::rectangle(ctx, ShapeStyle::Fill, Rectangle::new(bar_x, bar_y, bar_width, bar_height))?;
+                health_bar_bg.draw(ctx, DrawParams::new().color(Color::rgb(0.2, 0.2, 0.2)));
+                
+                let health_fill_width = (self.player_health / 100.0) * bar_width;
+                if health_fill_width > 0.0 {
+                    let health_bar_fg = Mesh::rectangle(ctx, ShapeStyle::Fill, Rectangle::new(bar_x, bar_y, health_fill_width, bar_height))?;
+                    health_bar_fg.draw(ctx, DrawParams::new().color(Color::RED));
+                }
+                
+                let hp_text = format!("HP: {:.0}%", self.player_health);
+                let mut hp_display = Text::new(hp_text, self.font.clone());
+                // Position text to the left of the bar or below? Let's put it inside/below
+                // Or just to the left
+                let hp_bounds = hp_display.get_bounds(ctx).unwrap();
+                hp_display.draw(ctx, DrawParams::new().position(Vec2::new(bar_x - hp_bounds.width - 10.0, bar_y)).color(Color::WHITE));
+
+                // Draw FPS
+                let fps = tetra::time::get_fps(ctx);
+                let fps_text = format!("FPS: {:.0}", fps);
+                let mut fps_display = Text::new(fps_text, self.font.clone());
+                fps_display.draw(ctx, DrawParams::new().position(Vec2::new(10.0, 30.0)).color(Color::rgb(1.0, 1.0, 0.0)));
             }
             Scene::Config => {
                 graphics::clear(ctx, Color::rgb(0.0, 0.0, 0.8)); // Blue background like BIOS/Dialog
@@ -1262,6 +907,26 @@ impl State for GameState {
                 
                 let mut content = Text::new(content_str, self.font.clone());
                 content.draw(ctx, DrawParams::new().position(Vec2::new(150.0, 180.0)).color(Color::BLACK));
+            }
+            Scene::KernelPanic => {
+                graphics::clear(ctx, Color::BLACK);
+                
+                let mut y = 20.0;
+                for (i, line) in self.panic_report.iter().enumerate() {
+                    let mut text = Text::new(line, self.font.clone());
+                    
+                    // Make the "Press ENTER" line blink
+                    if i == self.panic_report.len() - 1 {
+                        // Simple blink using frame count or similar (simulated with random for now or just static)
+                        // Actually, let's just make it static for stability, or use a timer if we had one.
+                        // We can use `ctx.get_time().as_secs_f32()` if we want.
+                        // Let's just keep it white.
+                        text.draw(ctx, DrawParams::new().position(Vec2::new(20.0, y)).color(Color::WHITE));
+                    } else {
+                        text.draw(ctx, DrawParams::new().position(Vec2::new(20.0, y)).color(Color::WHITE));
+                    }
+                    y += 20.0;
+                }
             }
         }
 

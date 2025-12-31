@@ -83,6 +83,14 @@ struct GameState {
     current_stage: u8,
     player_health: f32,
     panic_report: Vec<String>,
+
+    // NPC Gaster
+    npc_gaster_standing: Texture,
+    npc_gaster_talking: Texture,
+    gaster_pos: Vec2<f32>,
+    gaster_talking: bool,
+    gaster_dialogues: Vec<String>,
+    current_gaster_dialogue: String,
 }
 
 fn wrap_text(text: &str, max_chars: usize) -> Vec<String> {
@@ -139,6 +147,9 @@ impl GameState {
         let player_texture_left = Texture::new(ctx, "./assets/chara_left.png")?;
         let player_texture_right = Texture::new(ctx, "./assets/chara_right.png")?;
         let bg_texture = Texture::new(ctx, "./assets/city_bg.png")?;
+        
+        let npc_gaster_standing = Texture::new(ctx, "./assets/npc_gaster_standing.png")?;
+        let npc_gaster_talking = Texture::new(ctx, "./assets/npc_gaster_talking.png")?;
 
         let boot_lines = vec![
                 "Starting VibeCoded Linux version 6.9.420...".to_string(),
@@ -213,6 +224,21 @@ impl GameState {
             current_stage: 1,
             player_health: 100.0,
             panic_report: Vec::new(),
+            
+            npc_gaster_standing,
+            npc_gaster_talking,
+            gaster_pos: Vec2::new(600.0, 300.0),
+            gaster_talking: false,
+            gaster_dialogues: vec![
+                "çakar çakmaz çakan çakmak...".to_string(),
+                "Beware the man who speaks in hands...".to_string(),
+                "Dark, darker, yet darker...".to_string(),
+                "The shadows cutting deeper...".to_string(),
+                "Photon readings negative...".to_string(),
+                "This next experiment seems very, very interesting...".to_string(),
+                "What do you two think?".to_string(),
+            ],
+            current_gaster_dialogue: String::new(),
         })
     }
 
@@ -620,6 +646,29 @@ impl State for GameState {
                         self.session_started = false;
                     }
                 }
+
+                // Gaster Interaction (Stage 2)
+                if self.current_stage == 2 {
+                    // Simple distance check
+                    let dx = self.player_pos.x - self.gaster_pos.x;
+                    let dy = self.player_pos.y - self.gaster_pos.y;
+                    let distance = (dx * dx + dy * dy).sqrt();
+
+                    if distance < 100.0 {
+                        if input::is_key_pressed(ctx, Key::F) {
+                            self.gaster_talking = !self.gaster_talking;
+                            if self.gaster_talking {
+                                let mut rng = rand::thread_rng();
+                                let idx = rng.gen_range(0..self.gaster_dialogues.len());
+                                self.current_gaster_dialogue = self.gaster_dialogues[idx].clone();
+                            }
+                        }
+                    } else {
+                        if self.gaster_talking {
+                            self.gaster_talking = false;
+                        }
+                    }
+                }
             }
             Scene::Config => {
                 // Config logic
@@ -818,6 +867,70 @@ impl State for GameState {
                            else if self.current_stage == 2 { Color::rgb(0.8, 0.8, 1.0) } // Blueish tint
                            else { Color::rgb(1.0, 0.8, 0.8) }) // Reddish tint
                 );
+
+                // Draw Gaster (Stage 2)
+                if self.current_stage == 2 {
+                    let gaster_texture = if self.gaster_talking {
+                        &self.npc_gaster_talking
+                    } else {
+                        &self.npc_gaster_standing
+                    };
+                    
+                    let g_width = gaster_texture.width() as f32;
+                    let g_height = gaster_texture.height() as f32;
+                    let g_origin = Vec2::new(g_width / 2.0, g_height / 2.0);
+                    
+                    gaster_texture.draw(ctx, DrawParams::new()
+                        .position(self.gaster_pos)
+                        .origin(g_origin)
+                        .scale(Vec2::new(3.0, 3.0))
+                    );
+
+                    // Interaction Prompt
+                    let dx = self.player_pos.x - self.gaster_pos.x;
+                    let dy = self.player_pos.y - self.gaster_pos.y;
+                    let distance = (dx * dx + dy * dy).sqrt();
+
+                    if distance < 100.0 && !self.gaster_talking {
+                        let prompt = "Press F to interact";
+                        let mut text = Text::new(prompt, self.font.clone());
+                        // Simple centering approximation if get_bounds fails or is complex
+                        // But we used get_bounds before so it should be fine.
+                        // However, get_bounds returns Result, so we need to handle it or unwrap.
+                        // The previous code used unwrap_or, let's be safe.
+                        let width = text.get_bounds(ctx).map(|b| b.width).unwrap_or(100.0);
+                        
+                        text.draw(ctx, DrawParams::new()
+                            .position(Vec2::new(self.gaster_pos.x - width / 2.0, self.gaster_pos.y - 80.0))
+                            .color(Color::rgb(1.0, 1.0, 0.0))
+                        );
+                    }
+
+                    // Dialogue Box
+                    if self.gaster_talking {
+                        // Draw a box at the bottom
+                        // We need to create meshes on the fly or cache them. 
+                        // Creating meshes in draw loop is not ideal for performance but fine for this scale.
+                        if let Ok(box_rect) = Mesh::rectangle(
+                            ctx,
+                            ShapeStyle::Fill,
+                            Rectangle::new(50.0, 450.0, 700.0, 130.0),
+                        ) {
+                            box_rect.draw(ctx, DrawParams::new().color(Color::rgba(0.0, 0.0, 0.0, 0.8)));
+                        }
+                        
+                        if let Ok(border_rect) = Mesh::rectangle(
+                            ctx,
+                            ShapeStyle::Stroke(2.0),
+                            Rectangle::new(50.0, 450.0, 700.0, 130.0),
+                        ) {
+                            border_rect.draw(ctx, DrawParams::new().color(Color::WHITE));
+                        }
+
+                        let mut text = Text::new(&self.current_gaster_dialogue, self.font.clone());
+                        text.draw(ctx, DrawParams::new().position(Vec2::new(70.0, 470.0)).color(Color::WHITE));
+                    }
+                }
 
                 // Draw Dead Space (Stage 3)
                 if self.current_stage == 3 {

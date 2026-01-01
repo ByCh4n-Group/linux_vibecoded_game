@@ -1,3 +1,5 @@
+use tetra::math::Vec2;
+
 #[derive(PartialEq, Clone, Copy)]
 pub enum CombatTurn {
     Menu,
@@ -5,6 +7,12 @@ pub enum CombatTurn {
     Acting,
     Mercy,
     SansTurn,
+}
+
+pub struct Bone {
+    pub pos: Vec2<f32>,
+    pub size: Vec2<f32>,
+    pub velocity: Vec2<f32>,
 }
 
 pub struct CombatData {
@@ -23,6 +31,11 @@ pub struct CombatData {
     pub attack_bar_pos: f32,
     pub attack_bar_speed: f32,
     pub attack_bar_active: bool,
+    pub heart_pos: Vec2<f32>,
+    pub heart_velocity: Vec2<f32>,
+    pub is_blue_mode: bool,
+    pub can_jump: bool,
+    pub bones: Vec<Bone>,
 }
 
 impl CombatData {
@@ -40,6 +53,11 @@ impl CombatData {
             attack_bar_pos: 0.0,
             attack_bar_speed: 8.0,
             attack_bar_active: false,
+            heart_pos: Vec2::new(400.0, 400.0),
+            heart_velocity: Vec2::zero(),
+            is_blue_mode: false,
+            can_jump: true,
+            bones: Vec::new(),
         }
     }
 }

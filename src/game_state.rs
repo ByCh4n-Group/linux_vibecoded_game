@@ -99,6 +99,7 @@ pub struct GameState {
     pub sans_pos: Vec2<f32>,
     pub combat_data: CombatData,
     pub heart_texture: Option<Texture>,
+    pub bone_texture: Option<Texture>,
     pub fade_alpha: f32,
     pub fade_out: bool,
 
@@ -271,6 +272,7 @@ impl GameState {
             sans_pos: Vec2::new(600.0, 300.0), // Position in Stage 1
             combat_data: CombatData::new(),
             heart_texture,
+            bone_texture: None,
             fade_alpha: 0.0,
             fade_out: false,
 
@@ -402,6 +404,7 @@ impl GameState {
             (14, LoadedAsset::Sound(s)) => self.music_track = Some(s),
             (15, LoadedAsset::Texture(t)) => self.ayasofya_giris_texture = Some(t),
             (16, LoadedAsset::Texture(t)) => self.ayasofya_ici_texture = Some(t),
+            (17, LoadedAsset::Texture(t)) => self.bone_texture = Some(t),
             _ => {
                 println!("Warning: Asset index {} mismatch or unhandled", index);
             }
@@ -1053,8 +1056,7 @@ impl State for GameState {
             }
             Scene::CombatTransition => {
                 // Draw Desktop underneath
-                // Ideally we would call the desktop draw code, but for simplicity just draw black
-                graphics::clear(ctx, Color::BLACK);
+                crate::scenes::desktop::draw(ctx, self)?;
                 
                 // Draw fade
                 let fade_rect = Mesh::rectangle(ctx, ShapeStyle::Fill, Rectangle::new(0.0, 0.0, SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32)).unwrap();

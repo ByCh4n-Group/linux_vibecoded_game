@@ -8,8 +8,6 @@ pub enum CombatTurn {
 }
 
 pub struct CombatData {
-    pub player_hp: i32,
-    pub player_max_hp: i32,
     #[allow(dead_code)]
     pub sans_hp: i32,
     #[allow(dead_code)]
@@ -22,13 +20,14 @@ pub struct CombatData {
     pub action_text: String,
     pub timer: f32,
     pub sans_shake: f32,
+    pub attack_bar_pos: f32,
+    pub attack_bar_speed: f32,
+    pub attack_bar_active: bool,
 }
 
 impl CombatData {
     pub fn new() -> Self {
         CombatData {
-            player_hp: 20,
-            player_max_hp: 20,
             sans_hp: 1,
             sans_max_hp: 1,
             turn: CombatTurn::Menu,
@@ -38,6 +37,9 @@ impl CombatData {
             action_text: String::new(),
             timer: 0.0,
             sans_shake: 0.0,
+            attack_bar_pos: 0.0,
+            attack_bar_speed: 8.0,
+            attack_bar_active: false,
         }
     }
 }

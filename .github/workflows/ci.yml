@@ -17,6 +17,17 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y libsdl2-dev libasound2-dev
+        sudo apt-get install -y libasound2-dev
+    - name: Setup SDL3
+      id: sdl
+      uses: libsdl-org/setup-sdl@main
+      with:
+        install-linux-dependencies: true
+        version: 3.2.30
     - name: Run Clippy
-      run: cargo clippy -- -D warnings
+      run: |
+        export PKG_CONFIG_PATH=${{ steps.sdl.outputs.prefix }}/lib/pkgconfig:$PKG_CONFIG_PATH
+        export LIBRARY_PATH=${{ steps.sdl.outputs.prefix }}/lib:$LIBRARY_PATH
+        export LD_LIBRARY_PATH=${{ steps.sdl.outputs.prefix }}/lib:$LD_LIBRARY_PATH
+        export RUSTFLAGS="-L native=${{ steps.sdl.outputs.prefix }}/lib"
+        cargo clippy -- -D warnings

@@ -16,9 +16,20 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsdl2-dev libasound2-dev
+          sudo apt-get install -y libasound2-dev
+      - name: Setup SDL3
+        id: sdl
+        uses: libsdl-org/setup-sdl@main
+        with:
+          install-linux-dependencies: true
+          version: 3.2.30
       - name: Build Release
-        run: make release-linux
+        run: |
+          export PKG_CONFIG_PATH=${{ steps.sdl.outputs.prefix }}/lib/pkgconfig:$PKG_CONFIG_PATH
+          export LIBRARY_PATH=${{ steps.sdl.outputs.prefix }}/lib:$LIBRARY_PATH
+          export LD_LIBRARY_PATH=${{ steps.sdl.outputs.prefix }}/lib:$LD_LIBRARY_PATH
+          export RUSTFLAGS="-L native=${{ steps.sdl.outputs.prefix }}/lib"
+          make release-linux
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -35,32 +46,54 @@ jobs:
           sudo apt-get install -y mingw-w64 zip
       - name: Install Rust target
         run: rustup target add x86_64-pc-windows-gnu
-      - name: Setup SDL2
+      - name: Setup SDL3
         run: |
-          wget https://github.com/libsdl-org/SDL/releases/download/release-2.28.5/SDL2-devel-2.28.5-mingw.tar.gz
-          tar xzf SDL2-devel-2.28.5-mingw.tar.gz
-          echo "SDL2_DIR=$(pwd)/SDL2-2.28.5/x86_64-w64-mingw32" >> $GITHUB_ENV
+          wget https://github.com/libsdl-org/SDL/releases/download/release-3.2.30/SDL3-devel-3.2.30-mingw.tar.gz
+          tar xzf SDL3-devel-3.2.30-mingw.tar.gz
+          echo "SDL3_DIR=$(pwd)/SDL3-3.2.30/x86_64-w64-mingw32" >> $GITHUB_ENV
       - name: Build Release
         run: |
-          export LIBRARY_PATH="$SDL2_DIR/lib:$LIBRARY_PATH"
-          export RUSTFLAGS="-L native=$SDL2_DIR/lib"
-          export SDL2_NO_PKG_CONFIG=1
+          export LIBRARY_PATH="$SDL3_DIR/lib:$LIBRARY_PATH"
+          export RUSTFLAGS="-L native=$SDL3_DIR/lib"
+          export SDL3_NO_PKG_CONFIG=1
           make release-windows
           
-          # Bundle SDL2.dll
-          cp $SDL2_DIR/bin/SDL2.dll releases/windows/takfirtale/
+          # Bundle SDL3.dll
+          cp $SDL3_DIR/bin/SDL3.dll releases/windows/gorkitale/
           
-          # Update the zip file to include SDL2.dll
+          # Update the zip file to include SDL3.dll
           cd releases/windows
-          zip -u ../takfirtale-windows-*.zip takfirtale/SDL2.dll
+          zip -u ../gorkitale-windows-*.zip gorkitale/SDL3.dll
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: windows-release
           path: releases/*.zip
 
+  build-book:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install LaTeX
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y texlive-latex-base texlive-latex-extra texlive-lang-european
+      - name: Build Book
+        run: |
+          make -C docs/the_lore
+          
+          VERSION=${GITHUB_REF_NAME#v}
+          mkdir the_book
+          cp docs/the_lore/tr/main.pdf the_book/gorkitale_v${VERSION}-tr.pdf
+          cp docs/the_lore/en/main.pdf the_book/gorkitale_v${VERSION}-en.pdf
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: book-pdfs
+          path: the_book/*.pdf
+
   release:
-    needs: [build-linux, build-windows]
+    needs: [build-linux, build-windows, build-book]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -74,3 +107,4 @@ jobs:
           files: |
             artifacts/linux-release/*.tar.gz
             artifacts/windows-release/*.zip
+            artifacts/book-pdfs/*.pdf

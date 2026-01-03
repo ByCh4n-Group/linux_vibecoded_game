@@ -138,11 +138,11 @@ pub fn update(ctx: &mut Context, state: &mut GameState) -> tetra::Result {
         state.world.disco_timer += 1.0;
         if state.world.disco_timer > 10.0 {
             state.world.disco_timer = 0.0;
-            let mut rng = rand::thread_rng();
+            let mut rng = rand::rng();
             state.world.disco_color = Color::rgb(
-                rng.gen_range(0.0..1.0),
-                rng.gen_range(0.0..1.0),
-                rng.gen_range(0.0..1.0),
+                rng.random_range(0.0..1.0),
+                rng.random_range(0.0..1.0),
+                rng.random_range(0.0..1.0),
             );
         }
     }
@@ -171,8 +171,8 @@ pub fn update(ctx: &mut Context, state: &mut GameState) -> tetra::Result {
             if input::is_key_pressed(ctx, Key::F) {
                 state.world.gaster_talking = !state.world.gaster_talking;
                 if state.world.gaster_talking {
-                    let mut rng = rand::thread_rng();
-                    let idx = rng.gen_range(0..state.world.gaster_dialogues.len());
+                    let mut rng = rand::rng();
+                    let idx = rng.random_range(0..state.world.gaster_dialogues.len());
                     state.world.current_gaster_dialogue = state.world.gaster_dialogues[idx].clone();
                 }
             }
@@ -214,8 +214,8 @@ pub fn update(ctx: &mut Context, state: &mut GameState) -> tetra::Result {
             state.player.pos = Vec2::new(100.0, 300.0); // Entrance inside
 
             // Randomly select outfit
-            let mut rng = rand::thread_rng();
-            state.player.outfit = rng.gen_range(1..3); // 1 or 2
+            let mut rng = rand::rng();
+            state.player.outfit = rng.random_range(1..3); // 1 or 2
         }
     }
 

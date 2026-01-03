@@ -74,7 +74,7 @@ pub fn update(ctx: &mut Context, state: &mut GameState) -> tetra::Result {
                 }
                 state.system.save_users();
 
-                let mut rng = rand::thread_rng();
+                let mut rng = rand::rng();
                 match state.combat_data.sub_menu_selection {
                     0 => {
                         // Müşrik
@@ -84,7 +84,7 @@ pub fn update(ctx: &mut Context, state: &mut GameState) -> tetra::Result {
                             "Ona Müşrik dedin.\nUmursamadı bile.",
                         ];
                         state.combat_data.action_text =
-                            texts[rng.gen_range(0..texts.len())].to_string();
+                            texts[rng.random_range(0..texts.len())].to_string();
                     }
                     1 => {
                         // Fasık
@@ -94,49 +94,49 @@ pub fn update(ctx: &mut Context, state: &mut GameState) -> tetra::Result {
                             "Ona Fasık dedin.\nSana acıyarak baktı.",
                         ];
                         state.combat_data.action_text =
-                            texts[rng.gen_range(0..texts.len())].to_string();
+                            texts[rng.random_range(0..texts.len())].to_string();
                     }
                     2 => {
                         // Münafık
                         let texts = &state.texts.combat_actions.munafik;
                         state.combat_data.action_text =
-                            texts[rng.gen_range(0..texts.len())].to_string();
+                            texts[rng.random_range(0..texts.len())].to_string();
                     }
                     3 => {
                         // Kafir
                         let texts = &state.texts.combat_actions.kafir;
                         state.combat_data.action_text =
-                            texts[rng.gen_range(0..texts.len())].to_string();
+                            texts[rng.random_range(0..texts.len())].to_string();
                     }
                     4 => {
                         // Zındık
                         let texts = &state.texts.combat_actions.zindik;
                         state.combat_data.action_text =
-                            texts[rng.gen_range(0..texts.len())].to_string();
+                            texts[rng.random_range(0..texts.len())].to_string();
                     }
                     5 => {
                         // Tağut
                         let texts = &state.texts.combat_actions.tagut;
                         state.combat_data.action_text =
-                            texts[rng.gen_range(0..texts.len())].to_string();
+                            texts[rng.random_range(0..texts.len())].to_string();
                     }
                     6 => {
                         // Deccal
                         let texts = &state.texts.combat_actions.deccal;
                         state.combat_data.action_text =
-                            texts[rng.gen_range(0..texts.len())].to_string();
+                            texts[rng.random_range(0..texts.len())].to_string();
                     }
                     7 => {
                         // Ebu Cehil
                         let texts = &state.texts.combat_actions.ebu_cehil;
                         state.combat_data.action_text =
-                            texts[rng.gen_range(0..texts.len())].to_string();
+                            texts[rng.random_range(0..texts.len())].to_string();
                     }
                     8 => {
                         // Yecüc
                         let texts = &state.texts.combat_actions.yecuc;
                         state.combat_data.action_text =
-                            texts[rng.gen_range(0..texts.len())].to_string();
+                            texts[rng.random_range(0..texts.len())].to_string();
                     }
                     _ => {}
                 }
@@ -226,9 +226,9 @@ pub fn update(ctx: &mut Context, state: &mut GameState) -> tetra::Result {
                             "Ona seccade serdin.\nÜstüne bastı.",
                             "Ona ezan okudun.\n'Sesin kötü' dedi.",
                         ];
-                        let mut rng = rand::thread_rng();
+                        let mut rng = rand::rng();
                         state.combat_data.action_text =
-                            acts[rng.gen_range(0..acts.len())].to_string();
+                            acts[rng.random_range(0..acts.len())].to_string();
                     }
                     1 => {
                         // Kaç
@@ -313,9 +313,9 @@ pub fn update(ctx: &mut Context, state: &mut GameState) -> tetra::Result {
                         "i'm rooting for ya, kid.",
                         "geeeeeet dunked on!",
                     ];
-                    let mut rng = rand::thread_rng();
+                    let mut rng = rand::rng();
                     state.combat_data.dialogue_text =
-                        jokes[rng.gen_range(0..jokes.len())].to_string();
+                        jokes[rng.random_range(0..jokes.len())].to_string();
                 }
             }
         }
@@ -326,8 +326,8 @@ pub fn update(ctx: &mut Context, state: &mut GameState) -> tetra::Result {
                 state.combat_data.bones.clear();
 
                 // Randomize Attack Mode (0: Gravity, 1: Free Flight)
-                let mut rng = rand::thread_rng();
-                state.combat_data.mode = rng.gen_range(0..2);
+                let mut rng = rand::rng();
+                state.combat_data.mode = rng.random_range(0..2);
             }
             state.combat_data.timer += 1.0;
 
@@ -388,11 +388,11 @@ pub fn update(ctx: &mut Context, state: &mut GameState) -> tetra::Result {
 
             // Spawn Bones (Complex Pattern)
             if state.combat_data.timer % 40.0 == 0.0 {
-                let mut rng = rand::thread_rng();
+                let mut rng = rand::rng();
 
                 if state.combat_data.mode == 0 {
                     // Gravity Mode Patterns (Jump/Duck)
-                    let pattern = rng.gen_range(0..3);
+                    let pattern = rng.random_range(0..3);
                     match pattern {
                         0 => {
                             // Right to Left (Low)
@@ -428,12 +428,12 @@ pub fn update(ctx: &mut Context, state: &mut GameState) -> tetra::Result {
                 } else {
                     // Omni-directional Mode (Updated)
                     // 0: Left, 1: Right, 2: Top, 3: Bottom, 4: Top-Left, 5: Bottom-Left
-                    let direction = rng.gen_range(0..6);
+                    let direction = rng.random_range(0..6);
 
                     match direction {
                         0 => {
                             // Left -> Right
-                            let y_pos = rng.gen_range(330.0..440.0);
+                            let y_pos = rng.random_range(330.0..440.0);
                             state.combat_data.bones.push(Bone {
                                 pos: Vec2::new(-50.0, y_pos),
                                 size: Vec2::new(100.0, 10.0), // Thinner, longer
@@ -442,7 +442,7 @@ pub fn update(ctx: &mut Context, state: &mut GameState) -> tetra::Result {
                         }
                         1 => {
                             // Right -> Left
-                            let y_pos = rng.gen_range(330.0..440.0);
+                            let y_pos = rng.random_range(330.0..440.0);
                             state.combat_data.bones.push(Bone {
                                 pos: Vec2::new(800.0, y_pos),
                                 size: Vec2::new(100.0, 10.0),
@@ -451,7 +451,7 @@ pub fn update(ctx: &mut Context, state: &mut GameState) -> tetra::Result {
                         }
                         2 => {
                             // Top -> Bottom
-                            let x_pos = rng.gen_range(60.0..730.0);
+                            let x_pos = rng.random_range(60.0..730.0);
                             state.combat_data.bones.push(Bone {
                                 pos: Vec2::new(x_pos, 250.0), // Above box
                                 size: Vec2::new(10.0, 100.0), // Vertical
@@ -460,7 +460,7 @@ pub fn update(ctx: &mut Context, state: &mut GameState) -> tetra::Result {
                         }
                         3 => {
                             // Bottom -> Top
-                            let x_pos = rng.gen_range(60.0..730.0);
+                            let x_pos = rng.random_range(60.0..730.0);
                             state.combat_data.bones.push(Bone {
                                 pos: Vec2::new(x_pos, 500.0), // Below box
                                 size: Vec2::new(10.0, 100.0),
@@ -580,7 +580,7 @@ pub fn draw(ctx: &mut Context, state: &mut GameState) -> tetra::Result {
 
     // Draw Sans
     let shake_x = if state.combat_data.sans_shake > 0.0 {
-        rand::thread_rng().gen_range(-5.0..5.0)
+        rand::rng().random_range(-5.0..5.0)
     } else {
         0.0
     };

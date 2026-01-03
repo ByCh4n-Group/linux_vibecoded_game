@@ -44,23 +44,23 @@ pub struct ChaseEntity {
 
 impl MenuState {
     pub fn new() -> Self {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let mut snow_particles = Vec::new();
         for _ in 0..100 {
             snow_particles.push(SnowParticle {
                 pos: Vec2::new(
-                    rng.gen_range(0.0..SCREEN_WIDTH as f32),
-                    rng.gen_range(0.0..SCREEN_HEIGHT as f32),
+                    rng.random_range(0.0..SCREEN_WIDTH as f32),
+                    rng.random_range(0.0..SCREEN_HEIGHT as f32),
                 ),
-                speed: rng.gen_range(0.5..2.0),
-                size: rng.gen_range(1.0..3.0),
+                speed: rng.random_range(0.5..2.0),
+                size: rng.random_range(1.0..3.0),
             });
         }
 
         let title_len = "Gorkitale".len();
         let mut title_blink_timers = Vec::new();
         for _ in 0..title_len {
-            title_blink_timers.push(rng.gen_range(0.0..1.0));
+            title_blink_timers.push(rng.random_range(0.0..1.0));
         }
 
         Self {
@@ -86,12 +86,12 @@ impl MenuState {
 
 pub fn update(_ctx: &mut Context, state: &mut GameState) -> tetra::Result {
     // Update Snow
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     for particle in &mut state.menu_state.snow_particles {
         particle.pos.y += particle.speed;
         if particle.pos.y > SCREEN_HEIGHT as f32 {
             particle.pos.y = -10.0;
-            particle.pos.x = rng.gen_range(0.0..SCREEN_WIDTH as f32);
+            particle.pos.x = rng.random_range(0.0..SCREEN_WIDTH as f32);
         }
     }
 
@@ -99,38 +99,38 @@ pub fn update(_ctx: &mut Context, state: &mut GameState) -> tetra::Result {
     for timer in &mut state.menu_state.title_blink_timers {
         *timer -= 0.02; // Speed of blink
         if *timer <= 0.0 {
-            *timer = rng.gen_range(0.1..1.5); // Random reset
+            *timer = rng.random_range(0.1..1.5); // Random reset
         }
     }
 
     // Update Chase Animation
     // Spawn new chasers
-    if state.menu_state.chasers.len() < 5 && rng.gen_bool(0.02) {
-        let is_sans = rng.gen_bool(0.5);
-        let start_side = rng.gen_bool(0.5); // true = left, false = right
+    if state.menu_state.chasers.len() < 5 && rng.random_bool(0.02) {
+        let is_sans = rng.random_bool(0.5);
+        let start_side = rng.random_bool(0.5); // true = left, false = right
 
         let x = if start_side {
             -50.0
         } else {
             SCREEN_WIDTH as f32 + 50.0
         };
-        let y = rng.gen_range(50.0..SCREEN_HEIGHT as f32 - 50.0);
+        let y = rng.random_range(50.0..SCREEN_HEIGHT as f32 - 50.0);
 
         let target_x = if start_side {
             SCREEN_WIDTH as f32 + 100.0
         } else {
             -100.0
         };
-        let target_y = rng.gen_range(50.0..SCREEN_HEIGHT as f32 - 50.0);
+        let target_y = rng.random_range(50.0..SCREEN_HEIGHT as f32 - 50.0);
 
         let dx = target_x - x;
         let dy = target_y - y;
         let dist = (dx * dx + dy * dy).sqrt();
-        let speed = rng.gen_range(3.0..6.0);
+        let speed = rng.random_range(3.0..6.0);
 
         let velocity = Vec2::new((dx / dist) * speed, (dy / dist) * speed);
         let rotation = dy.atan2(dx); // Calculate rotation based on velocity vector
-        let scale = rng.gen_range(0.7..1.3); // Random scale
+        let scale = rng.random_range(0.7..1.3); // Random scale
 
         state.menu_state.chasers.push(ChaseEntity {
             pos: Vec2::new(x, y),

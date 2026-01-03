@@ -32,9 +32,9 @@ pub fn update(ctx: &mut Context, state: &mut GameState) {
                 "Have you tried turning it off and on again?",
                 "sudo rm -rf / ... just kidding!",
             ];
-            let mut rng = rand::thread_rng();
+            let mut rng = rand::rng();
             state.world.eilish_current_dialogue =
-                dialogues[rng.gen_range(0..dialogues.len())].to_string();
+                dialogues[rng.random_range(0..dialogues.len())].to_string();
         }
     } else {
         // Close textbox when out of range

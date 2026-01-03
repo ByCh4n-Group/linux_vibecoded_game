@@ -1,6 +1,7 @@
 mod assets;
 mod combat;
 mod defs;
+mod discord_rpc;
 mod game_state;
 mod input_handler;
 mod physics;

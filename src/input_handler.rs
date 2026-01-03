@@ -271,9 +271,9 @@ fn handle_enter_key(_ctx: &mut Context, state: &mut GameState) {
                             "Başka bir isim dene, karanlık yolcu.",
                             "Sistem bu ismi reddediyor.",
                         ];
-                        let mut rng = rand::thread_rng();
+                        let mut rng = rand::rng();
                         state.menu_state.error_message =
-                            Some(warnings[rng.gen_range(0..warnings.len())].to_string());
+                            Some(warnings[rng.random_range(0..warnings.len())].to_string());
                     } else if state.system.users.iter().any(|u| u.username == name) {
                         state.menu_state.error_message = Some("Name already exists".to_string());
                     } else {

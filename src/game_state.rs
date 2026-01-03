@@ -8,6 +8,7 @@ use tetra::{Context, State};
 
 use crate::combat::CombatData;
 use crate::defs::{SCREEN_HEIGHT, SCREEN_WIDTH, Scene};
+use crate::discord_rpc::DiscordRpc;
 use crate::player::PlayerState;
 use crate::system::SystemState;
 use crate::texts::TextResources;
@@ -46,12 +47,15 @@ impl GameOverState {
 
 pub struct GameState {
     pub scene: Scene,
+    pub previous_scene: Scene,
     pub font: Font,
     pub texts: TextResources,
 
     pub system: SystemState,
     pub player: PlayerState,
     pub world: WorldState,
+
+    pub discord: DiscordRpc,
 
     pub boot_state: crate::scenes::boot::BootState,
     pub menu_state: crate::scenes::menu::MenuState,
@@ -114,6 +118,9 @@ impl GameState {
         };
         world.gaster_dialogues = texts.gaster_dialogues.clone();
 
+        let mut discord = DiscordRpc::new("1456952639702040659");
+        discord.update_status("Booting up...", "Starting System");
+
         let mut menu_state = crate::scenes::menu::MenuState::new();
 
         // If no users, default to Create Save
@@ -123,12 +130,15 @@ impl GameState {
 
         Ok(GameState {
             scene: Scene::Boot,
+            previous_scene: Scene::Boot,
             font,
             texts,
 
             system,
             player: PlayerState::new(),
             world,
+
+            discord,
 
             boot_state,
             menu_state,
@@ -208,6 +218,31 @@ impl State for GameState {
     }
 
     fn update(&mut self, ctx: &mut Context) -> tetra::Result {
+        if self.scene != self.previous_scene {
+            let details = match self.scene {
+                Scene::Boot => "Booting up...",
+                Scene::Menu => "In Main Menu",
+                Scene::TransitionToDesktop => "Loading Desktop...",
+                Scene::Desktop => "Exploring Desktop",
+                Scene::CombatTransition => "Encounter!",
+                Scene::Combat => "Fighting!",
+                Scene::KernelPanic => "System Crash!",
+                Scene::AyasofyaInside => "Visiting Ayasofya",
+            };
+            let state = match self.scene {
+                Scene::Boot => "System Initialization",
+                Scene::Menu => "Selecting Option",
+                Scene::TransitionToDesktop => "Please wait...",
+                Scene::Desktop => "Wandering around",
+                Scene::CombatTransition => "Preparing for battle",
+                Scene::Combat => "In Combat",
+                Scene::KernelPanic => "Critical Error",
+                Scene::AyasofyaInside => "Praying",
+            };
+            self.discord.update_status(details, state);
+            self.previous_scene = self.scene;
+        }
+
         match self.scene {
             Scene::Boot => {
                 crate::scenes::boot::update(ctx, self)?;
@@ -242,7 +277,7 @@ impl State for GameState {
             }
             Scene::KernelPanic => {
                 // Update Stats Animation
-                let mut rng = rand::thread_rng();
+                let mut rng = rand::rng();
                 if self.game_over_state.stat_fading_in {
                     self.game_over_state.stat_alpha += 0.02;
                     if self.game_over_state.stat_alpha >= 1.5 {
@@ -261,8 +296,8 @@ impl State for GameState {
                         let pos;
                         loop {
                             let p = Vec2::new(
-                                rng.gen_range(50.0..SCREEN_WIDTH as f32 - 150.0),
-                                rng.gen_range(50.0..SCREEN_HEIGHT as f32 - 50.0),
+                                rng.random_range(50.0..SCREEN_WIDTH as f32 - 150.0),
+                                rng.random_range(50.0..SCREEN_HEIGHT as f32 - 50.0),
                             );
 
                             let in_center_x = p.x > 150.0 && p.x < 650.0;
@@ -305,7 +340,7 @@ impl State for GameState {
                     };
 
                     self.game_over_state.message_text =
-                        messages[rng.gen_range(0..messages.len())].clone();
+                        messages[rng.random_range(0..messages.len())].clone();
                 }
 
                 if self.game_over_state.message_fading_in {

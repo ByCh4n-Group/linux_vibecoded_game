@@ -18,6 +18,7 @@ jobs:
       - name: Export Linux
         uses: abarichello/godot-ci@3.6.2-stable
         with:
+          entryPoint: godot
           args: >
             --headless
             --export-release "Linux"
@@ -26,6 +27,7 @@ jobs:
       - name: Export Windows
         uses: abarichello/godot-ci@3.6.2-stable
         with:
+          entryPoint: godot
           args: >
             --headless
             --export-release "Windows"

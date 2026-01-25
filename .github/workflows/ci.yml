@@ -15,10 +15,6 @@ jobs:
 
       - name: Godot CI (Mono)
         uses: abarichello/godot-ci@3.6.2-stable
-        with:
-          godot-version: 4.5.1
-          mono: true
-          export-templates: true
 
       - name: Upload builds
         uses: actions/upload-artifact@v4

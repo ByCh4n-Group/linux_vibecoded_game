@@ -18,24 +18,21 @@ jobs:
 
       - name: Setup Godot (Mono)
         uses: abarichello/godot-ci@3.6.2-stable
-        with:
-          godot-version: 4.5.1
-          mono: true
-          export-templates: true
 
       - name: Export Linux
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           which godot
           mkdir -p build
-          godot --headless --export-release "Linux" build
+          godot --headless --export-release "Linux" build/wudutale.x86_64
+
       
       - name: Export Windows
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           which godot
           mkdir -p build
-          godot --headless --export-release "Windows" build
+          godot --headless --export-release "Windows" build/wudutale.exe
 
 
       - name: Zip Linux build

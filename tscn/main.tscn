@@ -1,3 +1,13 @@
-[gd_scene format=3 uid="uid://dy23px5aq1o28"]
+[gd_scene load_steps=2 format=3 uid="uid://dy23px5aq1o28"]
 
-[node name="main" type="Node2D"]
+[ext_resource type="PackedScene" uid="uid://cudpmsrukuyie" path="res://tscn/main_menu.tscn" id="1_ewaw7"]
+
+[node name="Main" type="Node"]
+
+[node name="FSM" type="Node" parent="."]
+
+[node name="World" type="Node2D" parent="."]
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="MainMenu" parent="UI" instance=ExtResource("1_ewaw7")]

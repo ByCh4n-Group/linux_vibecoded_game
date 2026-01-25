@@ -15,6 +15,12 @@ run/main_scene="uid://dy23px5aq1o28"
 config/features=PackedStringArray("4.5", "GL Compatibility")
 config/icon="res://assets/png/chara_at_salah.png"
 
+[display]
+
+window/size/viewport_width=802
+window/size/viewport_height=600
+window/size/resizable=false
+
 [dotnet]
 
 project/assembly_name="wudutale"

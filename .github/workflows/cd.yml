@@ -25,13 +25,17 @@ jobs:
 
       - name: Export Linux
         run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          which godot
           mkdir -p build/linux
           godot --headless --export-release "Linux" build/linux/wudutale.x86_64
-
-      - name: Export Windows
+      
+      - name: Export Linux
         run: |
-          mkdir -p build/windows
-          godot --headless --export-release "Windows" build/windows/wudutale.exe
+          export PATH="$HOME/.local/bin:$PATH"
+          which godot
+          mkdir -p build/linux
+          godot --headless --export-release "Linux" build/linux/wudutale.x86_64
 
       - name: Zip Linux build
         run: |

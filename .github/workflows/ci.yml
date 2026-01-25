@@ -1,4 +1,4 @@
-name: Godot CI (4.5.1 Mono Headless)
+name: Wudutale Build CI
 
 on:
   push:

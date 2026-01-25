@@ -1,0 +1,54 @@
+name: Wudutale Release CD
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Godot (Mono)
+        uses: abarichello/godot-ci@3.6.2-stable
+        with:
+          godot-version: 4.5.1
+          mono: true
+          export-templates: true
+
+      - name: Export Linux
+        run: |
+          mkdir -p build/linux
+          godot --headless --export-release "Linux" build/linux/wudutale.x86_64
+
+      - name: Export Windows
+        run: |
+          mkdir -p build/windows
+          godot --headless --export-release "Windows" build/windows/wudutale.exe
+
+      - name: Zip Linux build
+        run: |
+          cd build/linux
+          zip -r ../../wudutale-linux-x86_64.zip .
+
+      - name: Zip Windows build
+        run: |
+          cd build/windows
+          zip -r ../../wudutale-windows-x86_64.zip .
+
+      - name: Upload Linux to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: wudutale-linux-x86_64.zip
+
+      - name: Upload Windows to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: wudutale-windows-x86_64.zip
